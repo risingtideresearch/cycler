@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RTBW Cycler</title>
+  <link rel="stylesheet" href="/static/uPlot.min.css" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #111418; color: #e6e6e6; }
+    header {
+      display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+      padding: .9rem 1.5rem; border-bottom: 1px solid #2a2f36;
+    }
+    header h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+    .badge { font-size: .8rem; padding: .15rem .55rem; border-radius: 999px; background: #2a2f36; color: #8a939e; white-space: nowrap; }
+    .badge.running { background: #14532d; color: #4ade80; }
+    .badge.idle, .badge.pending { background: #1e3a5f; color: #60a5fa; }
+    .badge.complete { background: #3b2f5e; color: #c4b5fd; }
+    .badge.error, .badge.aborted { background: #4c1d1d; color: #f87171; }
+    .badge.skipped { background: #2a2f36; color: #6b7480; }
+    .badge.resting { background: #3a3320; color: #fbbf24; }
+    #progress { font-size: .85rem; color: #8a939e; }
+    .navlink { font-size: .82rem; color: #60a5fa; text-decoration: none; }
+    .navlink:hover { text-decoration: underline; }
+    #idns { font-size: .74rem; color: #6b7480; margin: 0 0 1rem; display: flex; flex-direction: column; gap: .15rem; }
+    #idns .idnk { display: inline-block; width: 3rem; color: #8a939e; }
+    main { padding: 1.25rem 1.5rem 3rem; }
+    h2.sec { font-size: .8rem; color: #8a939e; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin: 1.75rem 0 .7rem; }
+    h2.sec:first-child { margin-top: 0; }
+
+    button, select, input[type=number], input[type=text] {
+      background: #1a1f26; color: #e6e6e6; border: 1px solid #2a2f36; border-radius: 6px;
+      padding: .4rem .55rem; font: inherit;
+    }
+    button { cursor: pointer; }
+    button:hover:not(:disabled) { border-color: #3a424c; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    .instruments { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: .5rem; }
+    .inst { display: flex; flex-direction: column; gap: .25rem; }
+    .inst label { font-size: .68rem; color: #8a939e; text-transform: uppercase; letter-spacing: .03em; }
+    .inst input { width: 13rem; }
+    .iststat { font-size: .72rem; padding-bottom: .5rem; }
+    .iststat.ok { color: #4ade80; }
+    .iststat.err { color: #f87171; }
+    .iststat.sim { color: #60a5fa; }
+    #saveInstruments { align-self: center; }
+    #instError { color: #f87171; font-size: .82rem; align-self: center; }
+    .toolbar { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; margin-bottom: .9rem; }
+    .toolbar .spacer { flex: 1; }
+    #addDischarge { border-color: #7a5a12; color: #fcd34d; }
+    #addCharge { border-color: #166534; color: #86efac; }
+    #addRest { border-color: #2f4a6b; color: #93c5fd; }
+    #run { background: #14532d; border-color: #166534; color: #d1fae5; font-weight: 600; }
+    #stop { background: #4c1d1d; border-color: #7f1d1d; color: #fecaca; }
+
+    /* Builder rows */
+    #steps { display: flex; flex-direction: column; gap: .5rem; }
+    .empty { color: #6b7480; padding: .6rem 0; }
+    .row {
+      display: flex; align-items: flex-end; gap: .8rem; flex-wrap: wrap;
+      border: 1px solid #2a2f36; border-left-width: 4px; border-radius: 8px; padding: .7rem .8rem;
+      background: #161a20;
+    }
+    .row.discharge { border-left-color: #fbbf24; }
+    .row.charge { border-left-color: #4ade80; }
+    .row.rest { border-left-color: #60a5fa; }
+    .row .kind { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; width: 4.5rem; padding-bottom: .45rem; }
+    .row.discharge .kind { color: #fbbf24; }
+    .row.charge .kind { color: #4ade80; }
+    .row.rest .kind { color: #60a5fa; }
+    .f { display: flex; flex-direction: column; gap: .25rem; }
+    .f label { font-size: .68rem; color: #8a939e; text-transform: uppercase; letter-spacing: .03em; }
+    .f input[type=number] { width: 5.5rem; }
+    .row .rowctl { display: flex; gap: .25rem; padding-bottom: .15rem; margin-left: auto; }
+    .prognote { display: flex; flex-direction: column; gap: .25rem; max-width: 28rem; margin-bottom: .9rem; }
+    .prognote label { font-size: .68rem; color: #8a939e; text-transform: uppercase; letter-spacing: .03em; }
+    .prognote input { width: 100%; }
+    .row .rowctl button { padding: .3rem .5rem; line-height: 1; }
+    .rm { color: #f87171; border-color: #5a2a2a; }
+    #formError { color: #f87171; font-size: .82rem; min-height: 1em; margin: .6rem 0; }
+
+    /* Per-step run cards */
+    #cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1rem; }
+    .card { border: 1px solid #2a2f36; border-left-width: 4px; border-radius: 10px; padding: .8rem .9rem; background: #161a20; }
+    .card.discharge { border-left-color: #fbbf24; }
+    .card.charge { border-left-color: #4ade80; }
+    .card.rest { border-left-color: #60a5fa; }
+    .card.active { box-shadow: 0 0 0 1px #166534; }
+    .card .chead { display: flex; align-items: center; gap: .6rem; margin-bottom: .15rem; }
+    .card .ctitle { font-weight: 600; }
+    .card .cset { font-size: .78rem; color: #8a939e; margin-bottom: .6rem; }
+    .stats { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-bottom: .5rem; }
+    .stat { display: flex; flex-direction: column; }
+    .stat .k { font-size: .64rem; color: #8a939e; text-transform: uppercase; letter-spacing: .03em; }
+    .stat .v { font-size: 1.05rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .stat.volt .v { color: #4ade80; }
+    .stat.amp .v { color: #fbbf24; }
+    .card .plot { width: 100%; }
+    .card .creason { font-size: .76rem; color: #8a939e; margin-top: .4rem; min-height: 1em; }
+    .u-legend { font-size: .75rem; }
+
+    /* History table */
+    table { border-collapse: collapse; width: 100%; max-width: 1100px; font-variant-numeric: tabular-nums; }
+    th, td { text-align: right; padding: .35rem .6rem; border-top: 1px solid #2a2f36; }
+    th:first-child, td:first-child { text-align: left; }
+    th { font-size: .7rem; color: #8a939e; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+    td.note { color: #8a939e; text-align: left; }
+    td.mode-discharge { color: #fbbf24; }
+    td.mode-charge { color: #4ade80; }
+    a.csv { color: #60a5fa; text-decoration: none; font-size: .82rem; white-space: nowrap; }
+    a.csv:hover { text-decoration: underline; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RTBW Cycler</h1>
+    <span id="status" class="badge">connecting…</span>
+    <span id="progress"></span>
+  </header>
+
+  <main>
+    <h2 class="sec">Instruments</h2>
+    <div class="instruments">
+      <div class="inst">
+        <label for="dmmHost">DMM — cell voltmeter</label>
+        <input id="dmmHost" type="text" placeholder="IP (empty = simulated)" />
+        <span class="iststat" data-role="dmmStat">—</span>
+      </div>
+      <div class="inst">
+        <label for="loadHost">Electronic load</label>
+        <input id="loadHost" type="text" placeholder="IP (empty = simulated)" />
+        <span class="iststat" data-role="loadStat">—</span>
+      </div>
+      <div class="inst">
+        <label for="psuHost">Power supply</label>
+        <input id="psuHost" type="text" placeholder="IP (empty = simulated)" />
+        <span class="iststat" data-role="psuStat">—</span>
+      </div>
+      <button id="saveInstruments">Save &amp; reconnect</button>
+      <span id="instError"></span>
+    </div>
+    <div id="idns"></div>
+
+    <h2 class="sec">Program</h2>
+    <div class="toolbar">
+      <button id="addDischarge">+ Discharge step</button>
+      <button id="addCharge">+ Charge step</button>
+      <button id="addRest">+ Rest step</button>
+      <span class="spacer"></span>
+      <button id="run">▶ Run program</button>
+      <button id="stop" disabled>■ Stop</button>
+    </div>
+    <div class="prognote">
+      <label for="note">Program note</label>
+      <input id="note" type="text" maxlength="160" placeholder="e.g. cell A1, 26650 capacity test" />
+    </div>
+    <div id="steps"></div>
+    <div id="formError"></div>
+
+    <h2 class="sec" id="runHead" hidden>This run</h2>
+    <div id="cards"></div>
+
+    <h2 class="sec">Previous sessions</h2>
+    <div id="sessionsBody"><div class="empty">No sessions logged yet.</div></div>
+  </main>
+
+  <script src="/static/uPlot.iife.min.js"></script>
+  <script src="/static/battery.js"></script>
+</body>
+</html>

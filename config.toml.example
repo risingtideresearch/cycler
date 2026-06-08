@@ -1,0 +1,51 @@
+# Siglent Lab Control — configuration
+#
+# Copy this file to `config.toml` and edit. The app searches for `config.toml`
+# in the current working directory first, then in the project root. Every table
+# and key below is OPTIONAL: omit anything to keep the built-in default shown.
+#
+# Leaving a `host` empty (or omitting it) selects the SIMULATED instrument, so
+# the whole app runs with no hardware. Set a host to its LAN IP to use the real
+# device. SCPI is raw TCP, normally on port 5025.
+
+[dmm]
+# Multimeter (e.g. SDM3045X) used as the battery's CELL VOLTMETER. Wire its
+# leads Kelvin (4-wire) directly at the cell terminals so the logged voltage
+# excludes lead/contact IR drop. Empty host -> the battery uses the load/PSU's
+# own voltage reading instead.
+host = ""                 # e.g. "192.168.1.50"
+port = 5025
+
+[storage]
+db_path = "siglent.db"    # SQLite file for logged readings/sessions
+
+[load]
+# Electronic load (e.g. SDL1000X), used for battery discharge. Empty -> simulated.
+host = ""                 # e.g. "192.168.1.51"
+port = 5025
+max_current = 10.0        # safety cap (A): the load is never told to sink more
+
+[psu]
+# DC power supply, used for battery charging. Empty -> simulated supply.
+host = ""                 # e.g. "192.168.1.52"
+port = 5025
+channel = "CH1"
+max_voltage = 3.7         # charge CV safety cap (V). Hard-clamped to 3.7 (LFP) in code — can be lowered here but not raised
+max_current = 5.0         # charge current safety cap (A). Hard-clamped to 5.0 (SPD1305X) in code
+
+[discharge]
+# Defaults pre-filled in the battery UI.
+current = 1.0             # A
+cutoff = 2.5              # V
+
+[charge]
+# Defaults pre-filled in the battery UI (CC-CV).
+current = 1.0             # A
+voltage = 3.65            # V (CV setpoint)
+termination_current = 0.05  # A (taper-off current that ends the charge)
+
+[mock_cell]
+# Simulated LFP cell — only used when load.host / psu.host are empty.
+# Shrink `ah` to make offline charge/discharge/cycle runs finish quickly.
+ah = 3.0                  # capacity (Ah)
+rint = 0.08               # internal resistance (ohms)
