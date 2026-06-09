@@ -57,7 +57,7 @@ class Settings:
     # Discharge defaults and safety cap (current the load may be told to sink).
     discharge_current: float = 1.0
     cutoff_voltage: float = 2.5
-    load_max_current: float = 10.0
+    load_max_current: float = 30.0
 
     # Charge defaults and safety caps (the CV voltage and current the supply may
     # be set to). SPD1305X is 30 V / 5 A.

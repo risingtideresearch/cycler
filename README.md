@@ -123,7 +123,7 @@ device. See `config.toml.example` for an annotated template.
 | `[storage]`  | `db_path`             | `siglent.db`     | SQLite file for logged readings/sessions      |
 | `[load]`     | `host`                | _(empty → mock)_ | Electronic load IP address                    |
 | `[load]`     | `port`                | `5025`           | Load SCPI TCP port                            |
-| `[load]`     | `max_current`         | `10.0`           | Discharge-current safety cap (A); hard-clamped ≤ 30 |
+| `[load]`     | `max_current`         | `30.0`           | Discharge-current safety cap (A); hard-clamped ≤ 30 |
 | `[psu]`      | `host`                | _(empty → mock)_ | Power supply IP address (charging)            |
 | `[psu]`      | `port`                | `5025`           | PSU SCPI TCP port                             |
 | `[psu]`      | `channel`             | `CH1`            | PSU output channel                            |
