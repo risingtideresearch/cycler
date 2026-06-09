@@ -134,6 +134,7 @@ device. See `config.toml.example` for an annotated template.
 | `[charge]`   | `current`             | `1.0`            | Default charge current (A) in the UI          |
 | `[charge]`   | `voltage`             | `3.65`           | Default CV charge voltage (V)                 |
 | `[charge]`   | `termination_current` | `0.05`           | Default taper-off current that ends a charge (A) |
+| `[discord]`  | `webhook_url`         | _(empty → off)_  | Discord webhook for run notifications (step start/end, errors) |
 | `[mock_cell]`| `ah`                  | `3.0`            | Simulated cell capacity (mock load/PSU only)  |
 | `[mock_cell]`| `rint`                | `0.08`           | Simulated cell internal resistance Ω (mock)   |
 

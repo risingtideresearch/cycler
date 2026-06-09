@@ -18,8 +18,10 @@ voltage cap (and, if the cell's voltage can be read, if it is already full).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
+import urllib.request
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
@@ -28,6 +30,18 @@ from .db import Database
 from .instruments.base import BatterySource, Multimeter
 
 log = logging.getLogger("siglent.battery")
+
+
+def _discord_post(webhook: str, content: str) -> None:
+    """Blocking POST of a message to a Discord webhook (run via to_thread)."""
+    data = json.dumps({"content": content[:1900]}).encode("utf-8")
+    req = urllib.request.Request(
+        webhook, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    urllib.request.urlopen(req, timeout=5).read()
+
+
+# Emoji prefix per notification level, for at-a-glance scanning in Discord.
+_LEVEL_EMOJI = {"start": "▶️", "done": "✅", "warn": "⚠️", "error": "🚨"}
 
 Broadcast = Callable[[dict], Awaitable[None]]
 
@@ -77,6 +91,7 @@ class BatteryController:
         db: Database,
         broadcast: Broadcast,
         voltmeter: Multimeter | None = None,
+        discord_webhook: str | None = None,
         max_current: float = 10.0,
         max_charge_voltage: float = 3.8,
         psu_max_current: float = 5.0,
@@ -96,6 +111,11 @@ class BatteryController:
         # comes from the active load/PSU.
         self._voltmeter = voltmeter
         self.voltmeter_idn: str | None = None
+        # Optional Discord webhook for run notifications. Posts are fire-and-forget
+        # (never block or fail a run); _notify_tasks keeps strong refs so the
+        # background tasks aren't garbage-collected before they finish.
+        self._discord_webhook = discord_webhook
+        self._notify_tasks: set[asyncio.Task] = set()
         self._source_for = {MODE_DISCHARGE: load, MODE_CHARGE: psu}
         # Prefer the load for resting-voltage monitoring; fall back to anything
         # that can read its terminals while inactive.
@@ -299,7 +319,7 @@ class BatteryController:
                 self._seq["resume_at"] = None
                 self._mark_remaining_skipped()
             closing = self._closing_text("aborted", reason)
-        await self._log_event(closing)
+        await self._log_event(closing, "warn")
         await self._emit_state()
         return self.snapshot()
 
@@ -371,7 +391,7 @@ class BatteryController:
                     "open_circuit_v": present, "dcir": None,
                 }
 
-        await self._log_event(self._opening_text(step))
+        await self._log_event(self._opening_text(step), "start")
         await self._emit_state()
         log.info("%s %s started: %g A, target %g V", step.mode, self.session_id,
                  step.set_current, step.target_voltage)
@@ -650,7 +670,7 @@ class BatteryController:
                 else:  # error — abandon the rest of the program
                     seq["resume_at"] = None
                     self._mark_remaining_skipped()
-        await self._log_event(closing)
+        await self._log_event(closing, "done" if status == "complete" else "error")
         await self._emit_state()
 
     def _record_result(self, status: str, reason: str) -> None:
@@ -696,11 +716,13 @@ class BatteryController:
                     msg = f"{src.name} still drawing {resid:.3f} A after OFF — CHECK THE BENCH"
                     log.error(msg)
                     self.last_error = msg
+                    self._notify(msg, "error")
             except Exception as exc:
                 msg = f"could not confirm {src.name} switched off ({exc}) — CHECK THE BENCH"
                 log.warning(msg)
                 if self.last_error is None:
                     self.last_error = msg
+                self._notify(msg, "error")
         self.ended_ts = time.time()
         self.status = status
         self.stop_reason = reason
@@ -735,7 +757,7 @@ class BatteryController:
             }
             self._mark_remaining_skipped()
             self.last_error = str(exc)
-            await self._log_event(f"Step {seq['index'] + 1} skipped: {exc}")
+            await self._log_event(f"Step {seq['index'] + 1} skipped: {exc}", "warn")
             await self._emit_state()
 
     # --- helpers --------------------------------------------------------
@@ -773,7 +795,24 @@ class BatteryController:
         return (f"{verb} {status}: {self.charge_ah:.3f} Ah, "
                 f"{self.energy_wh:.3f} Wh ({reason})")
 
-    async def _log_event(self, text: str) -> None:
+    async def _log_event(self, text: str, level: str = "info") -> None:
         ts = time.time()
         await asyncio.to_thread(self._db.insert_event, ts, text)
         await self._broadcast({"type": "event", "ts": ts, "text": text})
+        self._notify(text, level)
+
+    def _notify(self, text: str, level: str = "info") -> None:
+        """Post a message to Discord if configured — fire-and-forget, so a slow or
+        failing webhook never blocks or fails the run."""
+        if not self._discord_webhook:
+            return
+        content = f"{_LEVEL_EMOJI.get(level, '')} {text}".strip()
+        task = asyncio.create_task(self._post_discord(content))
+        self._notify_tasks.add(task)
+        task.add_done_callback(self._notify_tasks.discard)
+
+    async def _post_discord(self, content: str) -> None:
+        try:
+            await asyncio.to_thread(_discord_post, self._discord_webhook, content)
+        except Exception as exc:
+            log.warning("Discord notification failed: %s", exc)

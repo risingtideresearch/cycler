@@ -33,6 +33,12 @@ channel = "CH1"
 max_voltage = 3.7         # charge CV safety cap (V). Hard-clamped to 3.7 (LFP) in code — can be lowered here but not raised
 max_current = 5.0         # charge current safety cap (A). Hard-clamped to 5.0 (SPD1305X) in code
 
+[discord]
+# Optional: a Discord webhook URL to get run notifications (step start/end,
+# errors). Empty = disabled. This URL is a credential — config.toml is gitignored.
+# Create one in Discord: Channel → Edit → Integrations → Webhooks → New Webhook.
+webhook_url = ""
+
 [discharge]
 # Defaults pre-filled in the battery UI.
 current = 1.0             # A

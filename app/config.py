@@ -67,6 +67,10 @@ class Settings:
     psu_max_voltage: float = 3.7
     psu_max_current: float = 5.0
 
+    # Optional Discord webhook for run notifications (step start/end, errors).
+    # Empty/absent disables it. The URL is a credential — config.toml is gitignored.
+    discord_webhook: str | None = None
+
     # Simulated-cell parameters (only used when load_host/psu_host are unset).
     mock_cell_ah: float = 3.0
     mock_cell_rint: float = 0.08
@@ -116,12 +120,15 @@ _LAYOUT: dict[str, tuple[str, str]] = {
     "charge_current": ("charge", "current"),
     "charge_voltage": ("charge", "voltage"),
     "termination_current": ("charge", "termination_current"),
+    "discord_webhook": ("discord", "webhook_url"),
     "mock_cell_ah": ("mock_cell", "ah"),
     "mock_cell_rint": ("mock_cell", "rint"),
 }
 
-# Host fields treat an empty string the same as absent: select the simulator.
-_HOST_FIELDS = {"dmm_host", "load_host", "psu_host"}
+# Fields where an empty string means "unset" (→ None / disabled): instrument
+# hosts select the simulator, an empty webhook disables notifications. Written
+# back as `key = ""` so the generated file shows where to fill them in.
+_BLANK_FIELDS = {"dmm_host", "load_host", "psu_host", "discord_webhook"}
 
 
 def _find_config() -> Path | None:
@@ -150,8 +157,8 @@ def load_settings(path: Path | None = None) -> Settings:
         if not isinstance(section, dict) or key not in section:
             continue
         value = section[key]
-        if name in _HOST_FIELDS and value == "":
-            continue  # empty host → keep None default → use the simulator
+        if name in _BLANK_FIELDS and value == "":
+            continue  # empty → keep the default (None: simulate / disabled)
         overrides[name] = value
 
     _warn_unknown(data)
@@ -173,7 +180,7 @@ def _warn_unknown(data: dict) -> None:
 
 
 # Table order for the generated file (keeps it readable).
-_TABLE_ORDER = ["dmm", "storage", "load", "psu", "discharge", "charge", "mock_cell"]
+_TABLE_ORDER = ["dmm", "storage", "load", "psu", "discharge", "charge", "discord", "mock_cell"]
 
 
 def _toml_scalar(v) -> str:
@@ -197,8 +204,8 @@ def _render_toml(values: dict) -> str:
         for key, field in by_table[table]:
             v = values.get(field)
             if v is None:
-                if field in _HOST_FIELDS:
-                    lines.append(f'{key} = ""')   # empty host → simulated
+                if field in _BLANK_FIELDS:
+                    lines.append(f'{key} = ""')   # show the key, blank = unset
                 continue
             lines.append(f"{key} = {_toml_scalar(v)}")
         lines.append("")

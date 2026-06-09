@@ -95,6 +95,7 @@ async def lifespan(app: FastAPI):
     battery = BatteryController(
         load, psu, db, battery_manager.broadcast,
         voltmeter=voltmeter,
+        discord_webhook=settings.discord_webhook,
         max_current=settings.load_max_current,
         max_charge_voltage=settings.psu_max_voltage,
         psu_max_current=settings.psu_max_current,
