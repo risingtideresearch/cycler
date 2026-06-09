@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import time
 
 
 class ScpiError(RuntimeError):
@@ -50,20 +51,30 @@ class ScpiSocket:
             assert self._sock is not None
             self._sock.sendall(command.encode("ascii") + b"\n")
 
-    def query(self, command: str) -> str:
-        """Send a command and read a single newline-terminated response."""
-        with self._lock:
-            self._connect_locked()
-            assert self._sock is not None
-            try:
-                self._sock.sendall(command.encode("ascii") + b"\n")
-                return self._read_line_locked()
-            except (OSError, ScpiError):
-                # Drop the connection so the next call transparently reconnects.
-                if self._sock is not None:
-                    self._sock.close()
-                    self._sock = None
-                raise
+    def query(self, command: str, retries: int = 2) -> str:
+        """Send a command and read a single newline-terminated response.
+
+        On a timeout or socket error, drop the connection and retry (reconnecting)
+        up to `retries` times, so a transient stall — instrument briefly busy, a
+        LAN hiccup — doesn't abort a long run. Each retry reconnects first, so a
+        stale or half-read response from the failed attempt can't desync the
+        session. A sustained outage still raises after the retries are exhausted,
+        so the controller can fail safe."""
+        for attempt in range(retries + 1):
+            with self._lock:
+                self._connect_locked()
+                assert self._sock is not None
+                try:
+                    self._sock.sendall(command.encode("ascii") + b"\n")
+                    return self._read_line_locked()
+                except (OSError, ScpiError):
+                    # Drop the connection so the retry (or next call) reconnects.
+                    if self._sock is not None:
+                        self._sock.close()
+                        self._sock = None
+                    if attempt == retries:
+                        raise
+            time.sleep(0.2)  # brief backoff before reconnecting and retrying
 
     def _read_line_locked(self) -> str:
         assert self._sock is not None

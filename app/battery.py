@@ -52,6 +52,9 @@ MIN_CHARGE_SECONDS = 5.0
 # Below this a "voltage" almost certainly means nothing is connected.
 MIN_PLAUSIBLE_VOLTAGE = 0.5
 
+# After switching a source off, current above this means it didn't actually stop.
+VERIFY_OFF_CURRENT = 0.05
+
 
 @dataclass
 class Step:
@@ -678,11 +681,26 @@ class BatteryController:
 
     async def _finalize_locked(self, reason: str, status: str) -> None:
         if self._source is not None:
+            src = self._source
             try:
-                await asyncio.to_thread(self._source.set_active, False)
+                await asyncio.to_thread(src.set_active, False)
             except Exception as exc:
-                log.error("failed to switch %s off: %s", self._source.name, exc)
+                log.error("failed to switch %s off: %s", src.name, exc)
                 self.last_error = f"source did not switch off cleanly: {exc}"
+            # Confirm the output actually dropped to ~0 A. Best-effort: if the
+            # instrument is unresponsive (often why we're here), say so loudly —
+            # an uncontrolled source on the cell is the thing to never miss.
+            try:
+                resid = await asyncio.to_thread(src.measure_current)
+                if abs(resid) > VERIFY_OFF_CURRENT:
+                    msg = f"{src.name} still drawing {resid:.3f} A after OFF — CHECK THE BENCH"
+                    log.error(msg)
+                    self.last_error = msg
+            except Exception as exc:
+                msg = f"could not confirm {src.name} switched off ({exc}) — CHECK THE BENCH"
+                log.warning(msg)
+                if self.last_error is None:
+                    self.last_error = msg
         self.ended_ts = time.time()
         self.status = status
         self.stop_reason = reason
