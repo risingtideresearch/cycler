@@ -298,7 +298,7 @@ function rebuildCards(seq) {
       `<div class="plot"></div>` +
       `<div class="creason" data-role="reason"></div>`;
     cardsEl.appendChild(root);
-    const cs = { root, rest, xs: [], vs: [], is_: [], sessionId: null, finalLoaded: false, seeded: false };
+    const cs = { root, rest, xs: [], vs: [], is_: [], sessionId: null, startedTs: null, finalLoaded: false, seeded: false };
     cs.plot = makePlot(root.querySelector(".plot"), plotWidth(root), rest);
     cards.set(v.index, cs);
   }
@@ -329,17 +329,22 @@ function lastVals(cs) {
 }
 
 function stepDuration(v, cs) {
-  if (v.started_ts) {
-    const end = v.ended_ts || (v.status === "running" ? Date.now() / 1000 : null);
-    if (end) return end - v.started_ts;
+  // Use server-stamped time only — the recorded end, or the latest sample's ts
+  // for a running step. Never the browser clock (Date.now()), which can be
+  // skewed from the server's started_ts and would yield a negative duration.
+  if (v.started_ts != null) {
+    const end = v.ended_ts != null ? v.ended_ts
+      : (cs.xs.length ? cs.xs[cs.xs.length - 1] : null);
+    if (end != null) return Math.max(0, end - v.started_ts);
   }
-  if (cs.xs.length >= 2) return cs.xs[cs.xs.length - 1] - cs.xs[0];
+  if (cs.xs.length >= 2) return Math.max(0, cs.xs[cs.xs.length - 1] - cs.xs[0]);
   return null;
 }
 
 function updateCard(v, activeStep) {
   const cs = cards.get(v.index);
   if (!cs) return;
+  cs.startedTs = v.started_ts;   // so live ticks can update the duration (server clock)
   cs.root.classList.toggle("active", v.index === activeStep && state.status === "running");
   const badge = cs.root.querySelector('[data-role="badge"]');
   badge.textContent = v.status;
@@ -402,6 +407,9 @@ function onTick(msg) {
   if (cs.xs.length && msg.ts <= cs.xs[cs.xs.length - 1]) return;  // dedup at seed boundary
   cs.xs.push(msg.ts); cs.vs.push(msg.voltage); cs.is_.push(msg.current);
   redraw(cs);
+  // Tick the duration live from server time (msg.ts), so it counts up without
+  // waiting for the next state snapshot and without browser-clock skew.
+  if (cs.startedTs != null) setText(cs.root, "dur", fmtDuration(Math.max(0, msg.ts - cs.startedTs)));
   // Missing tiles (rest cards) are no-ops via null-safe setText.
   setText(cs.root, "v", fmt(msg.voltage));
   setText(cs.root, "i", fmt(msg.current));
