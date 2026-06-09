@@ -554,6 +554,8 @@ class BatteryController:
 
         # DCIR from the first loaded sample: |OCV - V_loaded| / I. Done once,
         # near the step start, so it reflects mostly ohmic + early polarization.
+        # TODO: average the first N loaded samples (e.g. 3) instead of a single
+        # one, to cut measurement noise from the estimate. Keeps the same meaning.
         if self.dcir is None and self.open_circuit_v is not None and i > 0.05:
             self.dcir = abs(self.open_circuit_v - v) / i
             if self._seq is not None:
