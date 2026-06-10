@@ -39,6 +39,13 @@ max_current = 5.0         # charge current safety cap (A). Hard-clamped to 5.0 (
 # Create one in Discord: Channel → Edit → Integrations → Webhooks → New Webhook.
 webhook_url = ""
 
+[monitor]
+# Top-balance monitor (the separate read-only app, default port 8001). It reads
+# voltage from the DMM above and alerts as it nears the target.
+target_voltage = 3.65     # the balance target (V)
+warn_voltage = 3.60       # start warning at/above this (V)
+interval = 1.0            # seconds between voltage reads
+
 [discharge]
 # Defaults pre-filled in the battery UI.
 current = 1.0             # A

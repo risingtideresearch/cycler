@@ -18,26 +18,17 @@ voltage cap (and, if the cell's voltage can be read, if it is already full).
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
-import urllib.request
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 from .config import HARD_MAX_CHARGE_VOLTAGE, HARD_MAX_LOAD_CURRENT, HARD_MAX_PSU_CURRENT
 from .db import Database
 from .instruments.base import BatterySource, Multimeter
+from .notify import discord_post
 
 log = logging.getLogger("siglent.battery")
-
-
-def _discord_post(webhook: str, content: str) -> None:
-    """Blocking POST of a message to a Discord webhook (run via to_thread)."""
-    data = json.dumps({"content": content[:1900]}).encode("utf-8")
-    req = urllib.request.Request(
-        webhook, data=data, headers={"Content-Type": "application/json"}, method="POST")
-    urllib.request.urlopen(req, timeout=5).read()
 
 
 # Emoji prefix per notification level, for at-a-glance scanning in Discord.
@@ -813,6 +804,6 @@ class BatteryController:
 
     async def _post_discord(self, content: str) -> None:
         try:
-            await asyncio.to_thread(_discord_post, self._discord_webhook, content)
+            await asyncio.to_thread(discord_post, self._discord_webhook, content)
         except Exception as exc:
             log.warning("Discord notification failed: %s", exc)

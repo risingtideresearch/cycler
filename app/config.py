@@ -71,6 +71,12 @@ class Settings:
     # Empty/absent disables it. The URL is a credential — config.toml is gitignored.
     discord_webhook: str | None = None
 
+    # Top-balance monitor (the separate read-only app). Alerts as voltage nears
+    # the target; reuses the [dmm] host and [discord] webhook above.
+    monitor_target_voltage: float = 3.65
+    monitor_warn_voltage: float = 3.60
+    monitor_interval: float = 1.0
+
     # Simulated-cell parameters (only used when load_host/psu_host are unset).
     mock_cell_ah: float = 3.0
     mock_cell_rint: float = 0.08
@@ -121,6 +127,9 @@ _LAYOUT: dict[str, tuple[str, str]] = {
     "charge_voltage": ("charge", "voltage"),
     "termination_current": ("charge", "termination_current"),
     "discord_webhook": ("discord", "webhook_url"),
+    "monitor_target_voltage": ("monitor", "target_voltage"),
+    "monitor_warn_voltage": ("monitor", "warn_voltage"),
+    "monitor_interval": ("monitor", "interval"),
     "mock_cell_ah": ("mock_cell", "ah"),
     "mock_cell_rint": ("mock_cell", "rint"),
 }
@@ -180,7 +189,7 @@ def _warn_unknown(data: dict) -> None:
 
 
 # Table order for the generated file (keeps it readable).
-_TABLE_ORDER = ["dmm", "storage", "load", "psu", "discharge", "charge", "discord", "mock_cell"]
+_TABLE_ORDER = ["dmm", "storage", "load", "psu", "discharge", "charge", "discord", "monitor", "mock_cell"]
 
 
 def _toml_scalar(v) -> str:

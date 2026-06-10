@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RTBW Balance Monitor</title>
+  <link rel="stylesheet" href="/static/uPlot.min.css" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #111418; color: #e6e6e6; }
+    header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: .9rem 1.5rem; border-bottom: 1px solid #2a2f36; }
+    header h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+    .badge { font-size: .8rem; padding: .15rem .55rem; border-radius: 999px; background: #2a2f36; color: #8a939e; white-space: nowrap; }
+    .badge.ok { background: #14532d; color: #4ade80; }
+    .badge.err { background: #4c1d1d; color: #f87171; }
+    .badge.mock { background: #1e3a5f; color: #60a5fa; }
+    #idn { font-size: .76rem; color: #6b7480; margin-left: auto; }
+    main { padding: 1.5rem; }
+    button { background: #1a1f26; color: #e6e6e6; border: 1px solid #2a2f36; border-radius: 6px; padding: .45rem .7rem; font: inherit; cursor: pointer; }
+    button:hover { border-color: #3a424c; }
+
+    /* State banner + big readout */
+    .banner { border-radius: 12px; padding: 1.5rem 1.75rem; margin-bottom: 1.25rem; border: 1px solid #2a2f36; display: flex; align-items: baseline; gap: 1.5rem; flex-wrap: wrap; transition: background .3s, border-color .3s; }
+    .banner .reading { font-size: 4rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+    .banner .reading small { font-size: 1.5rem; font-weight: 500; color: #8a939e; }
+    .banner .label { font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .banner .sub { font-size: .85rem; color: #8a939e; }
+    .banner.normal     { background: #161a20; border-color: #2a2f36; }
+    .banner.approaching{ background: #2a230f; border-color: #7a5a12; }
+    .banner.approaching .reading, .banner.approaching .label { color: #fbbf24; }
+    .banner.at_target  { background: #0f2a18; border-color: #166534; }
+    .banner.at_target .reading, .banner.at_target .label { color: #4ade80; }
+    .banner.over       { background: #2e1212; border-color: #7f1d1d; animation: pulse 1s ease-in-out infinite; }
+    .banner.over .reading, .banner.over .label { color: #f87171; }
+    .banner.stale      { opacity: .5; }
+    @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(248,113,113,.0); } 50% { box-shadow: 0 0 0 4px rgba(248,113,113,.25); } }
+
+    .meta { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
+    .meta .item { display: flex; flex-direction: column; }
+    .meta .k { font-size: .68rem; color: #8a939e; text-transform: uppercase; letter-spacing: .04em; }
+    .meta .v { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+    #soundBtn.on { border-color: #166534; color: #86efac; }
+    #chart { margin-top: .5rem; }
+    .u-legend { color: #c7ccd3; }
+    #err { color: #f87171; font-size: .85rem; min-height: 1em; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RTBW Balance Monitor</h1>
+    <span id="conn" class="badge">connecting…</span>
+    <span id="mock" class="badge mock" hidden>simulated</span>
+    <span id="idn"></span>
+  </header>
+
+  <main>
+    <div id="banner" class="banner normal">
+      <span class="reading"><span id="reading">—</span> <small>V</small></span>
+      <div>
+        <div class="label" id="stateLabel">—</div>
+        <div class="sub" id="stateSub"></div>
+      </div>
+    </div>
+
+    <div class="meta">
+      <div class="item"><span class="k">Target</span><span class="v" id="target">—</span></div>
+      <div class="item"><span class="k">Warn at</span><span class="v" id="warn">—</span></div>
+      <div class="item"><span class="k">Updated</span><span class="v" id="updated">—</span></div>
+      <button id="soundBtn" title="Browsers require a click before they can play sound">🔊 Enable sound</button>
+    </div>
+    <div id="err"></div>
+
+    <div id="chart"></div>
+  </main>
+
+  <script src="/static/uPlot.iife.min.js"></script>
+  <script src="/static/monitor.js"></script>
+</body>
+</html>

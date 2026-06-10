@@ -135,6 +135,9 @@ device. See `config.toml.example` for an annotated template.
 | `[charge]`   | `voltage`             | `3.65`           | Default CV charge voltage (V)                 |
 | `[charge]`   | `termination_current` | `0.05`           | Default taper-off current that ends a charge (A) |
 | `[discord]`  | `webhook_url`         | _(empty → off)_  | Discord webhook for run notifications (step start/end, errors) |
+| `[monitor]`  | `target_voltage`      | `3.65`           | Balance target the monitor alerts on (V)      |
+| `[monitor]`  | `warn_voltage`        | `3.60`           | Monitor starts warning at/above this (V)       |
+| `[monitor]`  | `interval`            | `1.0`            | Monitor seconds between voltage reads          |
 | `[mock_cell]`| `ah`                  | `3.0`            | Simulated cell capacity (mock load/PSU only)  |
 | `[mock_cell]`| `rint`                | `0.08`           | Simulated cell internal resistance Ω (mock)   |
 
@@ -152,6 +155,28 @@ load and again in the controller. A charge step is refused if its CV voltage
 exceeds the cap, and a constant-voltage supply can't output above its setpoint, so
 the cell can never see more than the cap. Change the ceilings in code,
 deliberately, for other chemistries.
+
+## Top-balance monitor
+
+A separate, **read-only** app (`monitor/main.py`, default port 8001) for watching
+a top-balance charge. It polls cell/pack voltage from the DMM and shows a big live
+readout and a plot with warn/target reference lines, **alerting as the voltage
+nears the target** — an on-screen banner (amber → green → red), a browser beep,
+and an optional Discord message. It never arms, sets, or switches any instrument.
+
+```bash
+uvicorn monitor.main:app --host 0.0.0.0 --port 8001 \
+  --ws-ping-interval 30 --ws-ping-timeout 120
+```
+
+Open <http://localhost:8001>. With no DMM configured it simulates a balance charge
+so you can see it work. Target/warn thresholds and the read interval are the
+`[monitor]` config keys (default 3.65 / 3.60 V). Click **Enable sound** once to
+allow the browser beep (browsers block audio until a user gesture).
+
+> **The DMM allows a single connection.** Run the monitor when the cycler isn't
+> using the DMM — the cycler holds the DMM whenever a `[dmm] host` is configured,
+> even while idle, so the two can't read it at the same time.
 
 ## How data is logged
 
@@ -175,11 +200,15 @@ sqlite3 siglent.db 'SELECT ts, value, unit FROM readings ORDER BY ts DESC LIMIT 
   (instrument/quantity/unit) and a `sessions` table (per-step parameters and
   results, grouped by run id, with open-circuit V and DCIR).
 - **`app/config.py`** — TOML config loading and the hard safety ceilings.
+- **`app/notify.py`** — minimal Discord webhook poster, shared by both apps.
+- **`monitor/`** — the standalone read-only top-balance monitor app (its own
+  FastAPI app on port 8001; reuses the instrument drivers and config).
 - **`app/main.py`** — FastAPI app: serves the UI, streams state over
   `/ws/battery`, and exposes the REST API (`/api/battery/run`, `/stop`,
   `/session/{id}` and `…/export.csv`, `/sessions`, `/config`).
-- **`web/`** — `battery.html` + `static/battery.js`: the program builder, per-step
-  cards, and Instruments panel. uPlot is vendored.
+- **`web/`** — `battery.html` + `static/battery.js` (cycler UI: program builder,
+  per-step cards, Instruments panel) and `monitor.html` + `static/monitor.js`
+  (monitor UI). uPlot is vendored.
 
 ## License
 
