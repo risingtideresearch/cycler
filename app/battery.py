@@ -351,6 +351,28 @@ class BatteryController:
                     raise ValueError(f"failed to start the {step.mode}: {exc}") from exc
 
             now = time.time()
+            # Record the session BEFORE taking on "running" state. The source is
+            # already on at this point but we are not yet running, so nothing
+            # would monitor it — if the DB write fails, switch the source back
+            # off rather than leave it driving the cell unsupervised.
+            try:
+                session_id = await asyncio.to_thread(
+                    self._db.start_session, step.mode, now, step.set_current,
+                    step.target_voltage, step.termination_current, step.max_seconds,
+                    step.max_ah, step.note, cycle_id, present,
+                )
+            except Exception as exc:
+                if source is not None:
+                    try:
+                        await asyncio.to_thread(source.set_active, False)
+                    except Exception as off_exc:
+                        msg = (f"{source.name} may still be ON after a failed "
+                               f"step start ({off_exc}) — CHECK THE BENCH")
+                        log.error(msg)
+                        self.last_error = msg
+                        self._notify(msg, "error")
+                raise ValueError(
+                    f"could not record the {step.mode} session: {exc}") from exc
             self._source = source
             self.mode = step.mode
             self.step = step
@@ -367,11 +389,7 @@ class BatteryController:
             # put a rest step before this one for accuracy.)
             self.open_circuit_v = present
             self.dcir = None
-            self.session_id = await asyncio.to_thread(
-                self._db.start_session, step.mode, now, step.set_current,
-                step.target_voltage, step.termination_current, step.max_seconds,
-                step.max_ah, step.note, cycle_id, present,
-            )
+            self.session_id = session_id
             self.status = "running"
             if self._seq is not None:
                 self._seq["resume_at"] = None
@@ -693,11 +711,29 @@ class BatteryController:
     async def _finalize_locked(self, reason: str, status: str) -> None:
         if self._source is not None:
             src = self._source
-            try:
-                await asyncio.to_thread(src.set_active, False)
-            except Exception as exc:
-                log.error("failed to switch %s off: %s", src.name, exc)
-                self.last_error = f"source did not switch off cleanly: {exc}"
+            # Switching the source OFF is the one command that must not be lost
+            # to a transient comms failure — reads retry inside ScpiSocket.query,
+            # but writes don't — so retry it here, dropping the connection
+            # between attempts so a wedged socket can't doom every try.
+            off_exc: Exception | None = None
+            for attempt in range(3):
+                try:
+                    await asyncio.to_thread(src.set_active, False)
+                    off_exc = None
+                    break
+                except Exception as exc:
+                    off_exc = exc
+                    log.warning("switch-off attempt %d for %s failed: %s",
+                                attempt + 1, src.name, exc)
+                    if hasattr(src, "close"):
+                        try:
+                            await asyncio.to_thread(src.close)
+                        except Exception:
+                            pass
+                    await asyncio.sleep(0.5)
+            if off_exc is not None:
+                log.error("failed to switch %s off: %s", src.name, off_exc)
+                self.last_error = f"source did not switch off cleanly: {off_exc}"
             # Confirm the output actually dropped to ~0 A. Best-effort: if the
             # instrument is unresponsive (often why we're here), say so loudly —
             # an uncontrolled source on the cell is the thing to never miss.
