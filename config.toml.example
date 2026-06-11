@@ -23,7 +23,7 @@ db_path = "siglent.db"    # SQLite file for logged readings/sessions
 # Electronic load (e.g. SDL1000X), used for battery discharge. Empty -> simulated.
 host = ""                 # e.g. "192.168.1.51"
 port = 5025
-max_current = 10.0        # safety cap (A): the load is never told to sink more
+max_current = 30.0        # safety cap (A). Hard-clamped to 30.0 (SDL1020X-E) in code
 
 [psu]
 # DC power supply, used for battery charging. Empty -> simulated supply.
@@ -32,6 +32,30 @@ port = 5025
 channel = "CH1"
 max_voltage = 3.7         # charge CV safety cap (V). Hard-clamped to 3.7 (LFP) in code — can be lowered here but not raised
 max_current = 5.0         # charge current safety cap (A). Hard-clamped to 5.0 (SPD1305X) in code
+
+[dmm2]
+# SECOND multimeter, used by the standalone DCIR tester app (port 8002) as its
+# fixture voltmeter — wire it Kelvin at the test fixture. Empty -> the tester
+# falls back to load 2's own voltage reading (or simulates, if load 2 is empty).
+host = ""                 # e.g. "192.168.1.53"
+port = 5025
+
+[load2]
+# SECOND electronic load, used by the DCIR tester to sink the test pulse.
+# Empty -> the tester simulates cells being swapped in and out.
+host = ""                 # e.g. "192.168.1.54"
+port = 5025
+
+[dcir]
+# DCIR tester app (the separate app, default port 8002). It waits for a cell in
+# the fixture, lets the voltage settle, fires one CC pulse on load 2, and logs
+# DCIR = (V_open - V_loaded) / I. Measure + log only — no pass/fail.
+pulse_current = 10.0      # pulse amplitude (A). Hard-clamped to the 30 A load ceiling
+pulse_seconds = 2.0       # pulse length (s)
+settle_seconds = 10.0     # voltage must hold steady this long before pulsing
+settle_band = 0.003       # "steady" = total spread within this many volts
+min_voltage = 2.8         # never pulse a cell resting below this (V)
+db_path = "dcir.db"       # results DB (separate file: no cross-process contention)
 
 [discord]
 # Optional: a Discord webhook URL to get run notifications (step start/end,

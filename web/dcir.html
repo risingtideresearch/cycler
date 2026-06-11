@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RTBW DCIR Tester</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #111418; color: #e6e6e6; }
+    header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: .9rem 1.5rem; border-bottom: 1px solid #2a2f36; }
+    header h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+    .badge { font-size: .8rem; padding: .15rem .55rem; border-radius: 999px; background: #2a2f36; color: #8a939e; white-space: nowrap; }
+    .badge.ok { background: #14532d; color: #4ade80; }
+    .badge.err { background: #4c1d1d; color: #f87171; }
+    .badge.mock { background: #1e3a5f; color: #60a5fa; }
+    main { padding: 1.5rem; max-width: 1100px; }
+    button { background: #1a1f26; color: #e6e6e6; border: 1px solid #2a2f36; border-radius: 6px; padding: .45rem .7rem; font: inherit; cursor: pointer; }
+    button:hover { border-color: #3a424c; }
+    input { background: #0d1014; color: #e6e6e6; border: 1px solid #2a2f36; border-radius: 6px; padding: .4rem .55rem; font: inherit; width: 11rem; }
+
+    /* Instruments panel */
+    .panel { border: 1px solid #2a2f36; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; background: #14181d; }
+    .panel .row { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: flex-end; }
+    .panel label { display: flex; flex-direction: column; gap: .3rem; font-size: .75rem; color: #8a939e; }
+    #idns { margin-top: .6rem; font-size: .74rem; color: #6b7480; display: flex; flex-direction: column; gap: .15rem; }
+    #cfgMsg { font-size: .8rem; min-height: 1em; margin-top: .4rem; }
+    #cfgMsg.err { color: #f87171; } #cfgMsg.ok { color: #4ade80; }
+
+    /* State banner + big readout */
+    .banner { border-radius: 12px; padding: 1.5rem 1.75rem; margin-bottom: 1.25rem; border: 1px solid #2a2f36; display: flex; align-items: baseline; gap: 1.75rem; flex-wrap: wrap; transition: background .3s, border-color .3s; background: #161a20; }
+    .banner .reading { font-size: 4rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+    .banner .reading small { font-size: 1.5rem; font-weight: 500; color: #8a939e; }
+    .banner .label { font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .banner .sub { font-size: .85rem; color: #8a939e; }
+    .banner.no_cell  { background: #161a20; }
+    .banner.settling { background: #1a2030; border-color: #2c4a7a; }
+    .banner.settling .label { color: #60a5fa; }
+    .banner.pulsing  { background: #2a230f; border-color: #7a5a12; animation: pulse 0.8s ease-in-out infinite; }
+    .banner.pulsing .label, .banner.pulsing .reading { color: #fbbf24; }
+    .banner.done     { background: #0f2a18; border-color: #166534; }
+    .banner.done .reading, .banner.done .label { color: #4ade80; }
+    .banner.stale    { opacity: .5; }
+    @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); } 50% { box-shadow: 0 0 0 4px rgba(251,191,36,.25); } }
+
+    .meta { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
+    .meta .item { display: flex; flex-direction: column; }
+    .meta .k { font-size: .68rem; color: #8a939e; text-transform: uppercase; letter-spacing: .04em; }
+    .meta .v { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+    #err { color: #f87171; font-size: .85rem; min-height: 1em; margin-bottom: 1rem; }
+
+    /* Settle progress */
+    .progress { height: 6px; border-radius: 3px; background: #2a2f36; overflow: hidden; flex: 1 1 12rem; align-self: center; }
+    .progress div { height: 100%; width: 0; background: #60a5fa; transition: width .4s linear; }
+
+    table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+    th, td { text-align: right; padding: .4rem .7rem; border-bottom: 1px solid #2a2f36; font-size: .85rem; }
+    th { color: #8a939e; font-weight: 500; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+    th:first-child, td:first-child { text-align: left; }
+    h2 { font-size: .95rem; font-weight: 600; margin: 1.5rem 0 .6rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RTBW DCIR Tester</h1>
+    <span id="conn" class="badge">connecting…</span>
+    <span id="mock" class="badge mock" hidden>simulated</span>
+  </header>
+
+  <main>
+    <div class="panel">
+      <div class="row">
+        <label>DMM 2 IP (Kelvin at the fixture)<input id="dmm2Host" placeholder="empty = simulate" /></label>
+        <label>Load 2 IP<input id="load2Host" placeholder="empty = simulate" /></label>
+        <button id="cfgSave">Save &amp; reconnect</button>
+      </div>
+      <div id="idns"></div>
+      <div id="cfgMsg"></div>
+    </div>
+
+    <div id="banner" class="banner no_cell">
+      <span class="reading"><span id="reading">—</span> <small id="readingUnit">V</small></span>
+      <div>
+        <div class="label" id="stateLabel">—</div>
+        <div class="sub" id="stateSub"></div>
+      </div>
+      <div class="progress" id="settleWrap" hidden><div id="settleBar"></div></div>
+      <button id="retestBtn" hidden>Re-test this cell</button>
+    </div>
+
+    <div class="meta">
+      <div class="item"><span class="k">Live voltage</span><span class="v" id="liveV">—</span></div>
+      <div class="item"><span class="k">OCV</span><span class="v" id="ocv">—</span></div>
+      <div class="item"><span class="k">V loaded</span><span class="v" id="vloaded">—</span></div>
+      <div class="item"><span class="k">Pulse</span><span class="v" id="pulseInfo">—</span></div>
+    </div>
+    <div id="err"></div>
+
+    <h2>History</h2>
+    <table>
+      <thead><tr><th>Time</th><th>OCV (V)</th><th>V loaded (V)</th><th>I (A)</th><th>DCIR (mΩ)</th></tr></thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </main>
+
+  <script src="/static/dcir.js"></script>
+</body>
+</html>

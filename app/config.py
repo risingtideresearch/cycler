@@ -67,6 +67,24 @@ class Settings:
     psu_max_voltage: float = 3.7
     psu_max_current: float = 5.0
 
+    # Second instrument set, used by the standalone DCIR tester app (the cycler
+    # uses the [dmm]/[load]/[psu] set above). Same semantics: empty → simulate.
+    dmm2_host: str | None = None
+    dmm2_port: int = 5025
+    load2_host: str | None = None
+    load2_port: int = 5025
+
+    # DCIR tester app (the separate app on port 8002): load-pulse parameters.
+    # It waits for a connected cell to settle, fires one CC pulse on load 2, and
+    # logs DCIR = (V_open - V_loaded) / I. Results go in their own DB file so the
+    # two apps never contend for one SQLite database across processes.
+    dcir_pulse_current: float = 10.0   # CC pulse amplitude (A); clamped ≤ load ceiling
+    dcir_pulse_seconds: float = 2.0    # pulse length (s)
+    dcir_settle_seconds: float = 10.0  # voltage must hold steady this long before a pulse
+    dcir_settle_band: float = 0.003    # "steady" = spread within this many volts
+    dcir_min_voltage: float = 2.8      # never pulse a cell resting below this (V)
+    dcir_db_path: str = "dcir.db"
+
     # Optional Discord webhook for run notifications (step start/end, errors).
     # Empty/absent disables it. The URL is a credential — config.toml is gitignored.
     discord_webhook: str | None = None
@@ -87,6 +105,7 @@ class Settings:
             ("psu_max_voltage", HARD_MAX_CHARGE_VOLTAGE),
             ("psu_max_current", HARD_MAX_PSU_CURRENT),
             ("load_max_current", HARD_MAX_LOAD_CURRENT),
+            ("dcir_pulse_current", HARD_MAX_LOAD_CURRENT),
         ):
             if getattr(self, field) > ceiling:
                 log.warning("config %s=%g exceeds the hard safety ceiling %g — clamping to %g",
@@ -126,6 +145,16 @@ _LAYOUT: dict[str, tuple[str, str]] = {
     "charge_current": ("charge", "current"),
     "charge_voltage": ("charge", "voltage"),
     "termination_current": ("charge", "termination_current"),
+    "dmm2_host": ("dmm2", "host"),
+    "dmm2_port": ("dmm2", "port"),
+    "load2_host": ("load2", "host"),
+    "load2_port": ("load2", "port"),
+    "dcir_pulse_current": ("dcir", "pulse_current"),
+    "dcir_pulse_seconds": ("dcir", "pulse_seconds"),
+    "dcir_settle_seconds": ("dcir", "settle_seconds"),
+    "dcir_settle_band": ("dcir", "settle_band"),
+    "dcir_min_voltage": ("dcir", "min_voltage"),
+    "dcir_db_path": ("dcir", "db_path"),
     "discord_webhook": ("discord", "webhook_url"),
     "monitor_target_voltage": ("monitor", "target_voltage"),
     "monitor_warn_voltage": ("monitor", "warn_voltage"),
@@ -137,7 +166,8 @@ _LAYOUT: dict[str, tuple[str, str]] = {
 # Fields where an empty string means "unset" (→ None / disabled): instrument
 # hosts select the simulator, an empty webhook disables notifications. Written
 # back as `key = ""` so the generated file shows where to fill them in.
-_BLANK_FIELDS = {"dmm_host", "load_host", "psu_host", "discord_webhook"}
+_BLANK_FIELDS = {"dmm_host", "load_host", "psu_host", "dmm2_host", "load2_host",
+                 "discord_webhook"}
 
 
 def _find_config() -> Path | None:
@@ -189,7 +219,8 @@ def _warn_unknown(data: dict) -> None:
 
 
 # Table order for the generated file (keeps it readable).
-_TABLE_ORDER = ["dmm", "storage", "load", "psu", "discharge", "charge", "discord", "monitor", "mock_cell"]
+_TABLE_ORDER = ["dmm", "storage", "load", "psu", "dmm2", "load2", "discharge",
+                "charge", "dcir", "discord", "monitor", "mock_cell"]
 
 
 def _toml_scalar(v) -> str:

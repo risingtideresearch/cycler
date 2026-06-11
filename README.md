@@ -134,6 +134,16 @@ device. See `config.toml.example` for an annotated template.
 | `[charge]`   | `current`             | `1.0`            | Default charge current (A) in the UI          |
 | `[charge]`   | `voltage`             | `3.65`           | Default CV charge voltage (V)                 |
 | `[charge]`   | `termination_current` | `0.05`           | Default taper-off current that ends a charge (A) |
+| `[dmm2]`     | `host`                | _(empty → none)_ | Second DMM IP — the DCIR tester's fixture voltmeter |
+| `[dmm2]`     | `port`                | `5025`           | SCPI TCP port                                 |
+| `[load2]`    | `host`                | _(empty → mock)_ | Second load IP — sinks the DCIR test pulse    |
+| `[load2]`    | `port`                | `5025`           | SCPI TCP port                                 |
+| `[dcir]`     | `pulse_current`       | `10.0`           | DCIR pulse amplitude (A); hard-clamped ≤ 30   |
+| `[dcir]`     | `pulse_seconds`       | `2.0`            | DCIR pulse length (s)                         |
+| `[dcir]`     | `settle_seconds`      | `10.0`           | Voltage must hold steady this long before a pulse |
+| `[dcir]`     | `settle_band`         | `0.003`          | "Steady" = spread within this many volts      |
+| `[dcir]`     | `min_voltage`         | `2.8`            | Never pulse a cell resting below this (V)     |
+| `[dcir]`     | `db_path`             | `dcir.db`        | DCIR tester's own results DB file             |
 | `[discord]`  | `webhook_url`         | _(empty → off)_  | Discord webhook for run notifications (step start/end, errors) |
 | `[monitor]`  | `target_voltage`      | `3.65`           | Balance target the monitor alerts on (V)      |
 | `[monitor]`  | `warn_voltage`        | `3.60`           | Monitor starts warning at/above this (V)       |
@@ -178,6 +188,38 @@ allow the browser beep (browsers block audio until a user gesture).
 > using the DMM — the cycler holds the DMM whenever a `[dmm] host` is configured,
 > even while idle, so the two can't read it at the same time.
 
+## DCIR tester
+
+A second standalone app (`dcir/main.py`, default port 8002) for quickly
+screening cells — e.g. spotting a bad cell after a top balance — by measuring DC
+internal resistance with a single load pulse, hands-free:
+
+1. **Connect a cell** — the app watches the fixture voltage; a cell appearing
+   starts the test automatically.
+2. **Settling** — it waits until the voltage holds steady (the `[dcir]`
+   `settle_*` keys) so the open-circuit reference is a true rested value.
+3. **Pulse** — one constant-current pulse on the load (`pulse_current` ×
+   `pulse_seconds`), sampling the loaded voltage past the initial transient.
+4. **Result** — DCIR = (V_open − V_loaded) / I, shown big in mΩ and logged.
+   Remove the cell and insert the next one; it re-arms by itself. A *Re-test*
+   button repeats the measurement without unplugging.
+
+It measures and logs only — no pass/fail judgement. It uses the **second
+instrument set** (`[dmm2]`/`[load2]`), so it can run alongside the cycler: wire
+DMM 2 Kelvin at the fixture for accurate voltage (else it falls back to the
+load's own reading). Results go to their own SQLite file (`[dcir] db_path`).
+The pulse current is hard-clamped to the same 30 A load ceiling, a cell resting
+below `min_voltage` is never pulsed, and the load is switched off and
+**verified off** after every pulse.
+
+```bash
+uvicorn dcir.main:app --host 0.0.0.0 --port 8002 \
+  --ws-ping-interval 30 --ws-ping-timeout 120
+```
+
+Open <http://localhost:8002>. With no `[load2]` host configured it simulates
+cells being swapped in and out so you can watch the whole flow.
+
 ## How data is logged
 
 Readings go to the SQLite database (`siglent.db` by default). The easiest export
@@ -203,6 +245,9 @@ sqlite3 siglent.db 'SELECT ts, value, unit FROM readings ORDER BY ts DESC LIMIT 
 - **`app/notify.py`** — minimal Discord webhook poster, shared by both apps.
 - **`monitor/`** — the standalone read-only top-balance monitor app (its own
   FastAPI app on port 8001; reuses the instrument drivers and config).
+- **`dcir/`** — the standalone DCIR tester app (port 8002): auto-detects a
+  connected cell, fires one load pulse on the second instrument set
+  (`[dmm2]`/`[load2]`), and logs DCIR to its own database.
 - **`app/main.py`** — FastAPI app: serves the UI, streams state over
   `/ws/battery`, and exposes the REST API (`/api/battery/run`, `/stop`,
   `/session/{id}` and `…/export.csv`, `/sessions`, `/config`).
